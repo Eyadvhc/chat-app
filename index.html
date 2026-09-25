@@ -15,6 +15,7 @@
             --accent-color: #5865f2;
             --accent-hover: #4752c4;
             --danger-color: #ed4245;
+            --success-color: #3ba55d;
         }
 
         body {
@@ -108,44 +109,67 @@
             background-color: var(--bg-chat);
         }
 
-        /* قسم المكالمة الصوتية والشاشة */
+        /* قسم المكالمة الصوتية والشاشة مع لمبة التنبيه */
         .media-container {
-            padding: 15px;
+            padding: 12px 15px;
             background-color: var(--bg-dark);
             border-bottom: 1px solid #202225;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 8px;
         }
         .voice-setup {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             align-items: center;
+            flex-wrap: wrap;
         }
         .voice-setup input {
-            padding: 6px;
+            padding: 6px 10px;
             background: var(--bg-darker);
             border: 1px solid #444;
             color: #fff;
             border-radius: 4px;
-            width: 130px;
+            width: 120px;
         }
-        .media-controls {
-            display: flex;
-            gap: 10px;
-        }
-        .media-controls button {
+        .voice-setup button {
             background-color: #4f545c;
             color: white;
             border: none;
-            padding: 8px 14px;
+            padding: 7px 12px;
             border-radius: 4px;
             cursor: pointer;
             font-weight: 600;
         }
-        .media-controls button:hover { background-color: #686d73; }
-        .media-controls button.share-btn { background-color: #2f7d32; }
-        .media-controls button.share-btn:hover { background-color: #388e3c; }
+        .voice-setup button:hover { background-color: #686d73; }
+        .voice-setup button.host-btn { background-color: #35a55d; }
+        .voice-setup button.host-btn:hover { background-color: #2d8a4e; }
+        .voice-setup button.join-btn { background-color: var(--accent-color); }
+        .voice-setup button.join-btn:hover { background-color: var(--accent-hover); }
+        .voice-setup button.share-btn { background-color: #e67e22; }
+        .voice-setup button.share-btn:hover { background-color: #d35400; }
+
+        /* تصميم مؤشر الإضاءة (Light Indicator) */
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+        .light-dot {
+            width: 10px;
+            height: 10px;
+            background-color: var(--danger-color); /* أحمر افتراضياً */
+            border-radius: 50%;
+            box-shadow: 0 0 5px var(--danger-color);
+            transition: 0.3s;
+        }
+        .light-dot.connected {
+            background-color: var(--success-color); /* أخضر عند الاتصال */
+            box-shadow: 0 0 8px var(--success-color);
+        }
 
         video {
             width: 200px;
@@ -153,7 +177,7 @@
             background: #000;
             border-radius: 4px;
             object-fit: cover;
-            display: none; /* تظهر فقط عند مشاركة الشاشة */
+            display: none;
         }
 
         .chat-messages {
@@ -206,7 +230,6 @@
 </head>
 <body>
 
-<!-- شاشة تسجيل الدخول (كلمة المرور + اسم المستخدم) -->
 <div id="lockScreen">
     <div class="lock-card">
         <h2>تسجيل الدخول</h2>
@@ -217,7 +240,6 @@
     </div>
 </div>
 
-<!-- تطبيق الديسكورد الأساسي -->
 <div id="appContent">
     <div class="sidebar">
         <div class="server-header">VHC Private</div>
@@ -227,22 +249,26 @@
     </div>
 
     <div class="main-chat-area">
-        <!-- قسم المكالمة الصوتية ومشاركة الشاشة -->
+        <!-- قسم التحكم الصوتي مع لمبة التنبيه وأزرار Host / Join -->
         <div class="media-container">
             <div class="voice-setup">
-                <input type="text" id="roomCodeInput" placeholder="رمز الصوت (6 أرقام)" maxlength="6">
-                <button onclick="startVoiceChat()">اتصال صوتي</button>
+                <input type="text" id="roomCodeInput" placeholder="رمز (6 أرقام)" maxlength="6">
+                <button class="host-btn" onclick="hostVoiceChat()">إنشاء (Host)</button>
+                <button class="join-btn" onclick="joinVoiceChat()">انضمام (Join)</button>
                 <button class="share-btn" onclick="shareScreen()">مشاركة الشاشة</button>
+                
+                <!-- مؤشر الإضاءة لحالة الاتصال -->
+                <div class="status-indicator">
+                    <div id="lightDot" class="light-dot"></div>
+                    <span id="statusText">غير متصل</span>
+                </div>
             </div>
-            <!-- عنصر الصوت وعرض الشاشة المشتركة -->
             <audio id="remoteAudio" autoplay></audio>
             <video id="screenVideo" autoplay playsinline></video>
         </div>
 
-        <!-- سجل الرسائل -->
         <div id="chatMessages" class="chat-messages"></div>
 
-        <!-- خانة كتابة الرسالة -->
         <div class="chat-input-area">
             <div class="chat-input-wrapper">
                 <input type="text" id="msgInput" placeholder="إرسال رسالة إلى #عام-general (اضغط Enter للإرسال)..." onkeypress="checkChatEnter(event)">
@@ -251,7 +277,6 @@
     </div>
 </div>
 
-<!-- ربط Firebase وتوابع التطبيق -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getDatabase, ref, push, onChildAdded, set, get, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
@@ -270,7 +295,14 @@
     const db = getDatabase(app);
     
     const SHARED_PASSWORD = "vhc23";
-    let currentUsername = "مجهول";
+    let currentUsername = "";
+
+    window.onload = function() {
+        const savedUser = localStorage.getItem('vhc_chat_username');
+        if (savedUser) {
+            document.getElementById('userInput').value = savedUser;
+        }
+    }
 
     window.unlockApp = async function() {
         const enteredPass = document.getElementById('passInput').value;
@@ -279,6 +311,8 @@
 
         if (enteredPass === SHARED_PASSWORD && enteredUser !== "") {
             currentUsername = enteredUser;
+            localStorage.setItem('vhc_chat_username', currentUsername);
+
             errorElement.style.display = 'none';
             document.getElementById('lockScreen').style.display = 'none';
             document.getElementById('appContent').style.display = 'grid';
@@ -346,26 +380,37 @@
         box.scrollTop = box.scrollHeight;
     });
 
-    // إدارة الاتصال الصوتي عبر رمز الـ 6 أرقام (WebRTC + Firebase Signaling)
+    // دالة لتغيير لون لمبة التنبيه عند نجاح أو قطع الاتصال
+    function updateConnectionStatus(isConnected) {
+        const dot = document.getElementById('lightDot');
+        const text = document.getElementById('statusText');
+        if (isConnected) {
+            dot.classList.add('connected');
+            text.innerText = "متصل صوتياً";
+        } else {
+            dot.classList.remove('connected');
+            text.innerText = "غير متصل";
+        }
+    }
+
     let localStream, peerConnection;
     const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-    window.startVoiceChat = async function() {
+    // 1. الطرف الأول: إنشاء الغرفة (Host)
+    window.hostVoiceChat = async function() {
         const roomCode = document.getElementById('roomCodeInput').value.trim();
         if (roomCode.length !== 6) {
-            alert("الرجاء إدخال رمز مكون من 6 أرقام للاتصال الصوتي!");
+            alert("الرجاء إدخال رمز مكون من 6 أرقام لإنشاء الغرفة!");
             return;
         }
 
         try {
-            // طلب الصوت فقط بدون فيديو
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            alert("تم تفعيل الميكروفون بنجاح. جارِ الاتصال...");
-
             peerConnection = new RTCPeerConnection(servers);
             localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
             peerConnection.ontrack = (event) => {
+                updateConnectionStatus(true);
                 if (event.streams[0].getVideoTracks().length > 0) {
                     const screenVideo = document.getElementById('screenVideo');
                     screenVideo.srcObject = event.streams[0];
@@ -377,7 +422,7 @@
 
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
-                    push(ref(db, `voice_rooms/${roomCode}/candidates`), JSON.stringify(event.candidate));
+                    push(ref(db, `voice_rooms/${roomCode}/host_candidates`), JSON.stringify(event.candidate));
                 }
             };
 
@@ -385,16 +430,85 @@
             await peerConnection.setLocalDescription(offer);
             set(ref(db, `voice_rooms/${roomCode}/offer`), { sdp: offer.sdp, type: offer.type });
 
-            // الاستماع للإجابة (Answer)
+            // الاستماع لرد (Answer) الطرف الثاني والانضمام
             onChildAdded(ref(db, `voice_rooms/${roomCode}/answer`), async (snapshot) => {
                 const answer = snapshot.val();
                 if (answer && !peerConnection.currentRemoteDescription) {
                     await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                    updateConnectionStatus(true);
                 }
             });
 
+            // استقبال مرشحي الاتصال (Candidates) من العميل
+            onChildAdded(ref(db, `voice_rooms/${roomCode}/join_candidates`), async (snapshot) => {
+                const candidateData = snapshot.val();
+                if (candidateData && peerConnection) {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(JSON.parse(candidateData)));
+                }
+            });
+
+            alert("تم إنشاء الغرفة (Host) بنجاح. في انتظار انضمام الطرف الآخر...");
         } catch (err) {
             alert("خطأ في الميكروفون: " + err);
+        }
+    };
+
+    // 2. الطرف الثاني: الانضمام للغرفة (Join)
+    window.joinVoiceChat = async function() {
+        const roomCode = document.getElementById('roomCodeInput').value.trim();
+        if (roomCode.length !== 6) {
+            alert("الرجاء إدخال الرمز المكون من 6 أرقام للانضمام!");
+            return;
+        }
+
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            peerConnection = new RTCPeerConnection(servers);
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            peerConnection.ontrack = (event) => {
+                updateConnectionStatus(true);
+                if (event.streams[0].getVideoTracks().length > 0) {
+                    const screenVideo = document.getElementById('screenVideo');
+                    screenVideo.srcObject = event.streams[0];
+                    screenVideo.style.display = 'block';
+                } else {
+                    document.getElementById('remoteAudio').srcObject = event.streams[0];
+                }
+            };
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    push(ref(db, `voice_rooms/${roomCode}/join_candidates`), JSON.stringify(event.candidate));
+                }
+            };
+
+            // جلب الـ Offer الخاص بالغرفة
+            const offerSnap = await get(child(ref(db), `voice_rooms/${roomCode}/offer`));
+            if (!offerSnap.exists()) {
+                alert("لم يتم العثور على غرفة بهذا الرمز! تأكد من أن الـ Host قام بإنشائها أولاً.");
+                return;
+            }
+
+            const offer = offerSnap.val();
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            set(ref(db, `voice_rooms/${roomCode}/answer`), { sdp: answer.sdp, type: answer.type });
+
+            // استقبال مرشحي الاتصال من الـ Host
+            onChildAdded(ref(db, `voice_rooms/${roomCode}/host_candidates`), async (snapshot) => {
+                const candidateData = snapshot.val();
+                if (candidateData && peerConnection) {
+                    await peerConnection.addIceCandidate(new RTCIceCandidate(JSON.parse(candidateData)));
+                }
+            });
+
+            updateConnectionStatus(true);
+            alert("تم الانضمام للاتصال الصوتي بنجاح!");
+        } catch (err) {
+            alert("خطأ في الانضمام للمكالمة: " + err);
         }
     };
 
