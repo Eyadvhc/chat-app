@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>تطبيق خاص - Discord Style</title>
+    <!-- ربط ملف الـ Manifest لكي يقبل التثبيت -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#5865f2">
+    <style>
+        :root {
+            --bg-darker: #202225;
+            --bg-dark: #2f3136;
+            --bg-chat: #36393f;
+            --text-normal: #dcddde;
+            --text-muted: #72767d;
+            --accent-color: #5865f2;
+            --accent-hover: #4752c4;
+            --danger-color: #ed4245;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-chat);
+            color: var(--text-normal);
+        }
+
+        #lockScreen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: var(--bg-darker);
+        }
+        .lock-card {
+            background: var(--bg-dark);
+            padding: 30px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            width: 350px;
+        }
+        .lock-card h2 { margin-top: 0; color: #fff; }
+        .lock-card input {
+            width: 90%;
+            padding: 10px;
+            background: var(--bg-darker);
+            border: 1px solid #202225;
+            color: #fff;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        .lock-card button {
+            width: 100%;
+            padding: 10px;
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .lock-card button:hover { background: var(--accent-hover); }
+        .error-msg { color: var(--danger-color); margin-top: 10px; font-size: 14px; display: none; }
+
+        #appContent {
+            display: none;
+            height: 100vh;
+            grid-template-columns: 240px 1fr;
+        }
+
+        .sidebar {
+            background-color: var(--bg-dark);
+            border-left: 1px solid #202225;
+            display: flex;
+            flex-direction: column;
+        }
+        .server-header {
+            padding: 20px;
+            font-weight: bold;
+            font-size: 16px;
+            color: #fff;
+            border-bottom: 2px solid var(--bg-darker);
+        }
+        .channel-list {
+            padding: 10px;
+            flex: 1;
+        }
+        .channel-item {
+            padding: 8px 12px;
+            border-radius: 4px;
+            color: var(--text-muted);
+            cursor: pointer;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        .channel-item.active, .channel-item:hover {
+            background-color: rgba(255,255,255,0.08);
+            color: #fff;
+        }
+
+        .main-chat-area {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background-color: var(--bg-chat);
+        }
+
+        .media-container {
+            padding: 15px;
+            background-color: var(--bg-dark);
+            border-bottom: 1px solid #202225;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .videos-grid {
+            display: flex;
+            gap: 10px;
+        }
+        video {
+            width: 160px;
+            height: 90px;
+            background: #000;
+            border-radius: 4px;
+            object-fit: cover;
+        }
+        .media-controls {
+            display: flex;
+            gap: 10px;
+        }
+        .media-controls button {
+            background-color: #4f545c;
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .media-controls button:hover { background-color: #686d73; }
+        .media-controls button.share-btn { background-color: #2f7d32; }
+        .media-controls button.share-btn:hover { background-color: #388e3c; }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: scroll;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .message {
+            display: flex;
+            flex-direction: column;
+        }
+        .message .username {
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 4px;
+            font-size: 14px;
+        }
+        .message .text {
+            color: var(--text-normal);
+            font-size: 15px;
+            line-height: 1.4;
+        }
+
+        .chat-input-area {
+            padding: 20px;
+            background-color: var(--bg-chat);
+        }
+        .chat-input-wrapper {
+            background-color: #40444b;
+            border-radius: 8px;
+            padding: 10px 15px;
+            display: flex;
+            align-items: center;
+        }
+        .chat-input-wrapper input {
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-size: 15px;
+            outline: none;
+        }
+        .chat-input-wrapper input::placeholder {
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+
+<div id="lockScreen">
+    <div class="lock-card">
+        <h2>تسجيل الدخول</h2>
+        <input type="password" id="passInput" placeholder="أدخل رمز القفل..." onkeypress="checkLockEnter(event)">
+        <button onclick="unlockApp()">دخول</button>
+        <div id="errorText" class="error-msg">كلمة المرور غير صحيحة!</div>
+    </div>
+</div>
+
+<div id="appContent">
+    <div class="sidebar">
+        <div class="server-header">VHC Private</div>
+        <div class="channel-list">
+            <div class="channel-item active"># عام-general</div>
+        </div>
+    </div>
+
+    <div class="main-chat-area">
+        <div class="media-container">
+            <div class="videos-grid">
+                <video id="localVideo" autoplay muted playsinline></video>
+                <video id="remoteVideo" autoplay playsinline></video>
+            </div>
+            <div class="media-controls">
+                <button onclick="startCall()">اتصال صوت وفيديو</button>
+                <button class="share-btn" onclick="shareScreen()">مشاركة الشاشة</button>
+            </div>
+        </div>
+
+        <div id="chatMessages" class="chat-messages"></div>
+
+        <div class="chat-input-area">
+            <div class="chat-input-wrapper">
+                <input type="text" id="msgInput" placeholder="إرسال رسالة إلى #عام-general (اضغط Enter للإرسال)..." onkeypress="checkChatEnter(event)">
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, push, onChildAdded, set, get, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyDEAukk7GrRJDBC54gAjyuC9YMEMvP3E",
+        authDomain: "chat-app-95202.firebaseapp.com",
+        databaseURL: "https://chat-app-95202-default-rtdb.firebaseio.com",
+        projectId: "chat-app-95202",
+        storageBucket: "chat-app-95202.firebasestorage.app",
+        messagingSenderId: "714604280805",
+        appId: "1:714604280805:web:84fbc15d964d68bf954d0c"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    
+    const SHARED_PASSWORD = "vhc23";
+
+    // تفعيل إذن الإشعارات للأجهزة عند فتح التطبيق
+    if (window.Notification && Notification.permission !== "granted") {
+        Notification.requestPermission();
+    }
+
+    window.unlockApp = async function() {
+        const enteredPass = document.getElementById('passInput').value;
+        const errorElement = document.getElementById('errorText');
+
+        if (enteredPass === SHARED_PASSWORD) {
+            errorElement.style.display = 'none';
+            document.getElementById('lockScreen').style.display = 'none';
+            document.getElementById('appContent').style.display = 'grid';
+
+            try {
+                const response = await fetch('https://api.ipify.org?format=json');
+                const data = await response.json();
+                const userIp = data.ip.replaceAll('.', '_');
+
+                const blockCheck = await get(child(ref(db), `blocked_ips/${userIp}`));
+                if (blockCheck.exists()) {
+                    alert("عذراً، هذا الجهاز محظور من قبل المسؤول!");
+                    document.getElementById('appContent').style.display = 'none';
+                    document.getElementById('lockScreen').style.display = 'flex';
+                    return;
+                }
+
+                set(ref(db, `connected_users/${userIp}`), {
+                    ip: data.ip,
+                    lastActive: Date.now()
+                });
+            } catch(e) {
+                console.log("العمل محلياً دون تتبع IP");
+            }
+        } else {
+            errorElement.style.display = 'block';
+            document.getElementById('passInput').value = '';
+        }
+    }
+
+    window.checkLockEnter = function(e) {
+        if (e.key === 'Enter') {
+            unlockApp();
+        }
+    }
+
+    window.sendTextMessage = function() {
+        const text = document.getElementById('msgInput').value;
+        if(text.trim() !== '') {
+            // نستخدم معرف عشوائي بسيط للتمييز أو اسم عام
+            push(ref(db, 'messages/'), { text: text, sender: 'المستخدم', timestamp: Date.now() });
+            document.getElementById('msgInput').value = '';
+        }
+    }
+
+    window.checkChatEnter = function(e) {
+        if (e.key === 'Enter') {
+            sendTextMessage();
+        }
+    }
+
+    // استقبال الرسائل وعرضها، مع إرسال إشعار للجهاز (Notification)
+    onChildAdded(ref(db, 'messages/'), (data) => {
+        const msg = data.val();
+        const box = document.getElementById('chatMessages');
+        box.innerHTML += `
+            <div class="message">
+                <div class="username">${msg.sender}</div>
+                <div class="text">${msg.text}</div>
+            </div>
+        `;
+        box.scrollTop = box.scrollHeight;
+
+        // إرسال تنبيه منبثق للجهاز إذا كان التطبيق في الخلفية أو قيد الاستخدام
+        if (Notification.permission === "granted" && document.hidden) {
+            new Notification("رسالة جديدة في VHC Chat", {
+                body: msg.text,
+                icon: "https://cdn-icons-png.flaticon.com/512/725/725107.png"
+            });
+        }
+    });
+
+    // تسجيل Service Worker لتمكين تثبيت التطبيق (PWA)
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js')
+        .then(() => console.log('Service Worker Registered Successfully'))
+        .catch((err) => console.log('SW Registration failed: ', err));
+    }
+</script>
+
+<script>
+    let localStream;
+
+    async function startCall() {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            document.getElementById('localVideo').srcObject = localStream;
+            alert("تم تشغيل الكاميرا والميكروفون بنجاح.");
+        } catch (err) {
+            alert("تعذر الوصول إلى الوسائط: " + err);
+        }
+    }
+
+    async function shareScreen() {
+        try {
+            const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+            document.getElementById('localVideo').srcObject = screenStream;
+        } catch (err) {
+            console.log("تم إلغاء مشاركة الشاشة");
+        }
+    }
+</script>
+
+</body>
+</html>
