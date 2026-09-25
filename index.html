@@ -62,6 +62,7 @@
             border-radius: 4px;
             font-size: 16px;
             cursor: pointer;
+            margin-top: 5px;
         }
         .lock-card button:hover { background: var(--accent-hover); }
         .error-msg { color: var(--danger-color); margin-top: 10px; font-size: 14px; display: none; }
@@ -84,7 +85,21 @@
             font-size: 16px;
             color: #fff;
             border-bottom: 2px solid var(--bg-darker);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
+        .clear-chat-btn {
+            background: var(--danger-color);
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .clear-chat-btn:hover { background: #c0392b; }
+
         .channel-list {
             padding: 10px;
             flex: 1;
@@ -109,7 +124,6 @@
             background-color: var(--bg-chat);
         }
 
-        /* قسم المكالمة الصوتية والشاشة مع لمبة التنبيه */
         .media-container {
             padding: 12px 15px;
             background-color: var(--bg-dark);
@@ -146,10 +160,9 @@
         .voice-setup button.host-btn:hover { background-color: #2d8a4e; }
         .voice-setup button.join-btn { background-color: var(--accent-color); }
         .voice-setup button.join-btn:hover { background-color: var(--accent-hover); }
-        .voice-setup button.share-btn { background-color: #e67e22; }
+        .voice-setup button.share-btn { background-color: #e67e22; display: none; }
         .voice-setup button.share-btn:hover { background-color: #d35400; }
 
-        /* تصميم مؤشر الإضاءة (Light Indicator) */
         .status-indicator {
             display: flex;
             align-items: center;
@@ -161,13 +174,13 @@
         .light-dot {
             width: 10px;
             height: 10px;
-            background-color: var(--danger-color); /* أحمر افتراضياً */
+            background-color: var(--danger-color);
             border-radius: 50%;
             box-shadow: 0 0 5px var(--danger-color);
             transition: 0.3s;
         }
         .light-dot.connected {
-            background-color: var(--success-color); /* أخضر عند الاتصال */
+            background-color: var(--success-color);
             box-shadow: 0 0 8px var(--success-color);
         }
 
@@ -191,17 +204,40 @@
         .message {
             display: flex;
             flex-direction: column;
+            position: relative;
+            padding-right: 5px;
+        }
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         .message .username {
             font-weight: 600;
             color: #7289da;
-            margin-bottom: 4px;
             font-size: 14px;
+        }
+        .delete-msg-btn {
+            background: transparent;
+            border: none;
+            color: var(--danger-color);
+            cursor: pointer;
+            font-size: 12px;
+            display: none;
+        }
+        .message:hover .delete-msg-btn {
+            display: inline-block;
         }
         .message .text {
             color: var(--text-normal);
             font-size: 15px;
             line-height: 1.4;
+            margin-top: 2px;
+        }
+        .message-info {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 3px;
         }
 
         .chat-input-area {
@@ -226,6 +262,47 @@
         .chat-input-wrapper input::placeholder {
             color: var(--text-muted);
         }
+
+        /* لوحة تحكم الأدمن (Admin Panel Modal) */
+        #adminModal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .admin-content {
+            background: var(--bg-dark);
+            padding: 25px;
+            border-radius: 8px;
+            width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            color: #fff;
+        }
+        .admin-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        .admin-table th, .admin-table td {
+            border: 1px solid #444;
+            padding: 8px;
+            text-align: center;
+            font-size: 14px;
+        }
+        .admin-action-btn {
+            padding: 4px 8px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            color: white;
+        }
+        .btn-block { background: var(--danger-color); }
+        .btn-delete { background: #c0392b; }
     </style>
 </head>
 <body>
@@ -235,29 +312,53 @@
         <h2>تسجيل الدخول</h2>
         <input type="text" id="userInput" placeholder="اكتب اسمك (Username)...">
         <input type="password" id="passInput" placeholder="رمز القفل المشترك (vhc23)..." onkeypress="checkLockEnter(event)">
-        <button onclick="unlockApp()">دخول</button>
+        
+        <button onclick="checkUserAndProceed()">دخول / إنشاء حساب</button>
         <div id="errorText" class="error-msg">الرجاء إدخال الاسم ورمز صحيح!</div>
+    </div>
+</div>
+
+<!-- لوحة تحكم الأدمن (تظهر فقط للأدمن) -->
+<div id="adminModal">
+    <div class="admin-content">
+        <h3>لوحة تحكم الأدمن (إدارة المستخدمين و الـ IPs)</h3>
+        <p style="font-size: 12px; color: var(--text-muted);">يمكنك حظر أو حذف المستخدمين والأجهزة المتصلة هنا:</p>
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>الاسم</th>
+                    <th>IP الجهاز</th>
+                    <th>الإجراءات</th>
+                </tr>
+            </thead>
+            <tbody id="adminUsersList">
+                <!-- سيتم تعبئتها ديناميكياً -->
+            </tbody>
+        </table>
+        <br>
+        <button onclick="closeAdminPanel()" style="background: #4f545c; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer;">إغلاق لوحة الأدمن</button>
     </div>
 </div>
 
 <div id="appContent">
     <div class="sidebar">
-        <div class="server-header">VHC Private</div>
+        <div class="server-header">
+            <span>VHC Private</span>
+            <button class="clear-chat-btn" onclick="clearAllChat()" title="مسح كل الشات">مسح الكل</button>
+        </div>
         <div class="channel-list">
             <div class="channel-item active"># عام-general</div>
         </div>
     </div>
 
     <div class="main-chat-area">
-        <!-- قسم التحكم الصوتي مع لمبة التنبيه وأزرار Host / Join -->
         <div class="media-container">
             <div class="voice-setup">
                 <input type="text" id="roomCodeInput" placeholder="رمز (6 أرقام)" maxlength="6">
                 <button class="host-btn" onclick="hostVoiceChat()">إنشاء (Host)</button>
                 <button class="join-btn" onclick="joinVoiceChat()">انضمام (Join)</button>
-                <button class="share-btn" onclick="shareScreen()">مشاركة الشاشة</button>
+                <button id="shareScreenBtn" class="share-btn" onclick="shareScreen()">مشاركة الشاشة</button>
                 
-                <!-- مؤشر الإضاءة لحالة الاتصال -->
                 <div class="status-indicator">
                     <div id="lightDot" class="light-dot"></div>
                     <span id="statusText">غير متصل</span>
@@ -279,7 +380,7 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getDatabase, ref, push, onChildAdded, set, get, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+    import { getDatabase, ref, push, onChildAdded, onChildRemoved, set, get, remove, child, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyDEAukk7GrRJDBC54gAjyuC9YMEMvP3E",
@@ -296,6 +397,7 @@
     
     const SHARED_PASSWORD = "vhc23";
     let currentUsername = "";
+    let currentUserIpKey = "";
 
     window.onload = function() {
         const savedUser = localStorage.getItem('vhc_chat_username');
@@ -304,60 +406,175 @@
         }
     }
 
-    window.unlockApp = async function() {
-        const enteredPass = document.getElementById('passInput').value;
+    // فحص ما إذا كان المستخدم مسجلاً من قبل أو جديداً
+    window.checkUserAndProceed = async function() {
         const enteredUser = document.getElementById('userInput').value.trim();
+        const enteredPass = document.getElementById('passInput').value;
         const errorElement = document.getElementById('errorText');
 
-        if (enteredPass === SHARED_PASSWORD && enteredUser !== "") {
-            currentUsername = enteredUser;
-            localStorage.setItem('vhc_chat_username', currentUsername);
-
-            errorElement.style.display = 'none';
-            document.getElementById('lockScreen').style.display = 'none';
-            document.getElementById('appContent').style.display = 'grid';
-
-            try {
-                const response = await fetch('https://api.ipify.org?format=json');
-                const data = await response.json();
-                const userIp = data.ip.replaceAll('.', '_');
-
-                const blockCheck = await get(child(ref(db), `blocked_ips/${userIp}`));
-                if (blockCheck.exists()) {
-                    alert("عذراً، هذا الجهاز محظور من قبل المسؤول!");
-                    document.getElementById('appContent').style.display = 'none';
-                    document.getElementById('lockScreen').style.display = 'flex';
-                    return;
-                }
-
-                set(ref(db, `connected_users/${userIp}`), {
-                    ip: data.ip,
-                    username: currentUsername,
-                    lastActive: Date.now()
-                });
-            } catch(e) {
-                console.log("العمل محلياً دون تتبع IP");
-            }
-        } else {
+        if (enteredUser === "" || enteredPass !== SHARED_PASSWORD) {
             errorElement.style.display = 'block';
             document.getElementById('passInput').value = '';
+            return;
         }
+        errorElement.style.display = 'none';
+
+        try {
+            const usersSnap = await get(child(ref(db), 'connected_users'));
+            let nameExistsInDb = false;
+
+            if (usersSnap.exists()) {
+                usersSnap.forEach((childSnap) => {
+                    const userData = childSnap.val();
+                    if (userData.username && userData.username.toLowerCase() === enteredUser.toLowerCase()) {
+                        nameExistsInDb = true;
+                    }
+                });
+            }
+
+            // إذا كان الاسم مسجلاً بالفعل في قاعدة البيانات، ادخل مباشرة دون رسالة تأكيد
+            if (nameExistsInDb) {
+                unlockApp(enteredUser);
+            } else {
+                // إذا كان اسماً جديداً كلياً، أظهر رسالة التأكيد لمنع الإنشاء بالخطأ
+                if (confirm(`هل أنت متأكد من رغبتك في إنشاء مستخدم جديد باسم: (${enteredUser})؟`)) {
+                    unlockApp(enteredUser);
+                }
+            }
+
+        } catch (e) {
+            console.log("خطأ أثناء فحص اسم المستخدم:", e);
+            // في حال حدوث مشكلة اتصال، اعتبره مستخدماً جديداً وأظهر رسالة التأكيد احتياطياً
+            if (confirm(`هل أنت متأكد من رغبتك في الدخول بالاسم: (${enteredUser})؟`)) {
+                unlockApp(enteredUser);
+            }
+        }
+    }
+
+    window.unlockApp = async function(enteredUser) {
+        currentUsername = enteredUser;
+        localStorage.setItem('vhc_chat_username', currentUsername);
+
+        try {
+            const response = await fetch('https://api.ipify.org?format=json');
+            const data = await response.json();
+            currentUserIpKey = data.ip.replaceAll('.', '_');
+
+            // فحص هل الـ IP محظور أم لا
+            const blockCheck = await get(child(ref(db), `blocked_ips/${currentUserIpKey}`));
+            if (blockCheck.exists()) {
+                alert("عذراً، هذا الـ IP تم حظره من قبل الأدمن!");
+                return;
+            }
+
+            // تسجيل الجهاز في قاعدة البيانات
+            set(ref(db, `connected_users/${currentUserIpKey}`), {
+                ip: data.ip,
+                username: currentUsername,
+                lastActive: Date.now()
+            });
+        } catch(e) {
+            currentUserIpKey = "local_device";
+            console.log("العمل محلياً دون تتبع IP");
+        }
+
+        document.getElementById('lockScreen').style.display = 'none';
+        document.getElementById('appContent').style.display = 'grid';
+
+        // إذا كان اسم المستخدم هو Admin، افتح لوحة التحكم تلقائياً
+        if (currentUsername.toLowerCase() === 'admin') {
+            openAdminPanel();
+        }
+
+        listenToAdminActions();
     }
 
     window.checkLockEnter = function(e) {
         if (e.key === 'Enter') {
-            unlockApp();
+            checkUserAndProceed();
         }
+    }
+
+    // فتح وإغلاق لوحة الأدمن
+    function openAdminPanel() {
+        document.getElementById('adminModal').style.display = 'flex';
+        loadAdminData();
+    }
+
+    window.closeAdminPanel = function() {
+        document.getElementById('adminModal').style.display = 'none';
+    }
+
+    // تحميل وتحديث بيانات المستخدمين للأدمن
+    function loadAdminData() {
+        const usersListRef = ref(db, 'connected_users');
+        onValue(usersListRef, (snapshot) => {
+            const tbody = document.getElementById('adminUsersList');
+            tbody.innerHTML = '';
+            
+            if (snapshot.exists()) {
+                snapshot.forEach((childSnap) => {
+                    const userData = childSnap.val();
+                    const ipKey = childSnap.key;
+
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${userData.username}</td>
+                            <td>${userData.ip || 'محلية'}</td>
+                            <td>
+                                <button class="admin-action-btn btn-block" onclick="blockIp('${ipKey}')">حظر IP</button>
+                                <button class="admin-action-btn btn-delete" onclick="deleteUser('${ipKey}')">حذف</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+        });
+    }
+
+    // وظيفة حظر IP للأدمن
+    window.blockIp = async function(ipKey) {
+        if (confirm("هل أنت متأكد من حظر هذا الجهاز (IP)؟")) {
+            await set(ref(db, `blocked_ips/${ipKey}`), true);
+            await remove(ref(db, `connected_users/${ipKey}`));
+            alert("تم الحظر بنجاح!");
+        }
+    }
+
+    // وظيفة حذف المستخدم من القائمة النشطة
+    window.deleteUser = async function(ipKey) {
+        if (confirm("هل أنت متأكد من حذف هذا المستخدم؟")) {
+            await remove(ref(db, `connected_users/${ipKey}`));
+        }
+    }
+
+    // الاستماع لو تم حظر المستخدم الحالي أثناء تواجده لتسجيل خروجه فوراً
+    function listenToAdminActions() {
+        if (!currentUserIpKey) return;
+        onValue(ref(db, `blocked_ips/${currentUserIpKey}`), (snapshot) => {
+            if (snapshot.exists()) {
+                alert("تم حظرك من قبل الأدمن!");
+                location.reload();
+            }
+        });
     }
 
     window.sendTextMessage = function() {
         const text = document.getElementById('msgInput').value;
         if(text.trim() !== '') {
-            push(ref(db, 'messages/'), { 
-                text: text, 
-                sender: currentUsername, 
-                timestamp: Date.now() 
+            const newMsgRef = push(ref(db, 'messages/'));
+            set(newMsgRef, {
+                id: newMsgRef.key,
+                text: text,
+                sender: currentUsername,
+                status: 'Sent (تم الإرسال للسيرفر)',
+                timestamp: Date.now()
+            }).then(() => {
+                setTimeout(() => {
+                    set(ref(db, `messages/${newMsgRef.key}/status`), 'Delivered (وصلت للطرف الآخر 📬)');
+                }, 500);
             });
+
             document.getElementById('msgInput').value = '';
         }
     }
@@ -368,35 +585,79 @@
         }
     }
 
+    window.deleteMessage = function(msgId) {
+        remove(ref(db, `messages/${msgId}`));
+    }
+
+    window.clearAllChat = function() {
+        if(confirm("هل أنت متأكد من مسح جميع الرسائل؟")) {
+            remove(ref(db, 'messages/'));
+            document.getElementById('chatMessages').innerHTML = '';
+        }
+    }
+
     onChildAdded(ref(db, 'messages/'), (data) => {
         const msg = data.val();
+        if (!msg) return;
+
         const box = document.getElementById('chatMessages');
-        box.innerHTML += `
-            <div class="message">
-                <div class="username">${msg.sender}</div>
-                <div class="text">${msg.text}</div>
+        
+        if (msg.sender !== currentUsername && msg.status !== 'Seen (شاهدها الطرف الآخر 👀)') {
+            set(ref(db, `messages/${msg.id}/status`), 'Seen (شاهدها الطرف الآخر 👀)');
+        }
+
+        const msgDiv = document.createElement('div');
+        msgDiv.className = 'message';
+        msgDiv.id = `msg-${msg.id}`;
+        msgDiv.innerHTML = `
+            <div class="message-header">
+                <span class="username">${msg.sender}</span>
+                ${msg.sender === currentUsername ? `<button class="delete-msg-btn" onclick="deleteMessage('${msg.id}')">حذف</button>` : ''}
             </div>
+            <div class="text">${msg.text}</div>
+            <div class="message-info" id="status-${msg.id}">${msg.status || 'Sent'}</div>
         `;
+        box.appendChild(msgDiv);
         box.scrollTop = box.scrollHeight;
     });
 
-    // دالة لتغيير لون لمبة التنبيه عند نجاح أو قطع الاتصال
+    onChildRemoved(ref(db, 'messages/'), (data) => {
+        const msgId = data.key;
+        const msgElement = document.getElementById(`msg-${msgId}`);
+        if (msgElement) {
+            msgElement.remove();
+        }
+    });
+
+    import("https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js").then(({ onChildChanged }) => {
+        onChildChanged(ref(db, 'messages/'), (data) => {
+            const msg = data.val();
+            const statusEl = document.getElementById(`status-${msg.id}`);
+            if (statusEl) {
+                statusEl.innerText = msg.status;
+            }
+        });
+    });
+
     function updateConnectionStatus(isConnected) {
         const dot = document.getElementById('lightDot');
         const text = document.getElementById('statusText');
+        const shareBtn = document.getElementById('shareScreenBtn');
+
         if (isConnected) {
             dot.classList.add('connected');
             text.innerText = "متصل صوتياً";
+            shareBtn.style.display = 'inline-block';
         } else {
             dot.classList.remove('connected');
             text.innerText = "غير متصل";
+            shareBtn.style.display = 'none';
         }
     }
 
     let localStream, peerConnection;
     const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-    // 1. الطرف الأول: إنشاء الغرفة (Host)
     window.hostVoiceChat = async function() {
         const roomCode = document.getElementById('roomCodeInput').value.trim();
         if (roomCode.length !== 6) {
@@ -430,7 +691,6 @@
             await peerConnection.setLocalDescription(offer);
             set(ref(db, `voice_rooms/${roomCode}/offer`), { sdp: offer.sdp, type: offer.type });
 
-            // الاستماع لرد (Answer) الطرف الثاني والانضمام
             onChildAdded(ref(db, `voice_rooms/${roomCode}/answer`), async (snapshot) => {
                 const answer = snapshot.val();
                 if (answer && !peerConnection.currentRemoteDescription) {
@@ -439,7 +699,6 @@
                 }
             });
 
-            // استقبال مرشحي الاتصال (Candidates) من العميل
             onChildAdded(ref(db, `voice_rooms/${roomCode}/join_candidates`), async (snapshot) => {
                 const candidateData = snapshot.val();
                 if (candidateData && peerConnection) {
@@ -453,11 +712,10 @@
         }
     };
 
-    // 2. الطرف الثاني: الانضمام للغرفة (Join)
     window.joinVoiceChat = async function() {
         const roomCode = document.getElementById('roomCodeInput').value.trim();
         if (roomCode.length !== 6) {
-            alert("الرجاء إدخال الرمز المكون من 6 أرقام للانضمام!");
+            alert("الرمز المكون من 6 أرقام مطلوب للانضمام!");
             return;
         }
 
@@ -483,10 +741,9 @@
                 }
             };
 
-            // جلب الـ Offer الخاص بالغرفة
             const offerSnap = await get(child(ref(db), `voice_rooms/${roomCode}/offer`));
             if (!offerSnap.exists()) {
-                alert("لم يتم العثور على غرفة بهذا الرمز! تأكد من أن الـ Host قام بإنشائها أولاً.");
+                alert("لم يتم العثور على غرفة بهذا الرمز!");
                 return;
             }
 
@@ -497,7 +754,6 @@
             await peerConnection.setLocalDescription(answer);
             set(ref(db, `voice_rooms/${roomCode}/answer`), { sdp: answer.sdp, type: answer.type });
 
-            // استقبال مرشحي الاتصال من الـ Host
             onChildAdded(ref(db, `voice_rooms/${roomCode}/host_candidates`), async (snapshot) => {
                 const candidateData = snapshot.val();
                 if (candidateData && peerConnection) {
