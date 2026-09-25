@@ -103,6 +103,7 @@
         .channel-list {
             padding: 10px;
             flex: 1;
+            overflow-y: auto;
         }
         .channel-item {
             padding: 8px 12px;
@@ -115,6 +116,34 @@
         .channel-item.active, .channel-item:hover {
             background-color: rgba(255,255,255,0.08);
             color: #fff;
+        }
+
+        /* قسم الأعضاء في المكالمة الصوتية */
+        .voice-users-section {
+            margin-top: 10px;
+            border-top: 1px solid #202225;
+            padding-top: 10px;
+            display: none;
+        }
+        .voice-users-title {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            padding: 0 12px 5px 12px;
+            font-weight: bold;
+        }
+        .voice-user-item {
+            padding: 6px 12px;
+            border-radius: 4px;
+            color: var(--text-normal);
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .voice-user-item::before {
+            content: "🔊";
+            font-size: 12px;
         }
 
         .main-chat-area {
@@ -162,6 +191,11 @@
         .voice-setup button.join-btn:hover { background-color: var(--accent-hover); }
         .voice-setup button.share-btn { background-color: #e67e22; display: none; }
         .voice-setup button.share-btn:hover { background-color: #d35400; }
+        .voice-setup button.mute-btn { background-color: #f1c40f; color: #000; display: none; }
+        .voice-setup button.mute-btn:hover { background-color: #d4ac0d; }
+        .voice-setup button.mute-btn.muted { background-color: var(--danger-color); color: #fff; }
+        .voice-setup button.exit-voice-btn { background-color: var(--danger-color); display: none; }
+        .voice-setup button.exit-voice-btn:hover { background-color: #c0392b; }
 
         .status-indicator {
             display: flex;
@@ -263,7 +297,6 @@
             color: var(--text-muted);
         }
 
-        /* لوحة تحكم الأدمن (Admin Panel Modal) */
         #adminModal {
             display: none;
             position: fixed;
@@ -318,7 +351,6 @@
     </div>
 </div>
 
-<!-- لوحة تحكم الأدمن (تظهر فقط للأدمن) -->
 <div id="adminModal">
     <div class="admin-content">
         <h3>لوحة تحكم الأدمن (إدارة المستخدمين و الـ IPs)</h3>
@@ -332,7 +364,6 @@
                 </tr>
             </thead>
             <tbody id="adminUsersList">
-                <!-- سيتم تعبئتها ديناميكياً -->
             </tbody>
         </table>
         <br>
@@ -348,6 +379,12 @@
         </div>
         <div class="channel-list">
             <div class="channel-item active"># عام-general</div>
+            
+            <!-- قائمة أعضاء المكالمة الصوتية -->
+            <div class="voice-users-section" id="voiceUsersSection">
+                <div class="voice-users-title">المتصلون صوتياً</div>
+                <div id="voiceUsersList"></div>
+            </div>
         </div>
     </div>
 
@@ -358,10 +395,12 @@
                 <button class="host-btn" onclick="hostVoiceChat()">إنشاء (Host)</button>
                 <button class="join-btn" onclick="joinVoiceChat()">انضمام (Join)</button>
                 <button id="shareScreenBtn" class="share-btn" onclick="shareScreen()">مشاركة الشاشة</button>
+                <button id="muteMicBtn" class="mute-btn" onclick="toggleMuteMic()">كتم الميكروفون</button>
+                <button id="exitVoiceBtn" class="exit-voice-btn" onclick="exitVoiceChat()">خروج من المكالمة</button>
                 
                 <div class="status-indicator">
                     <div id="lightDot" class="light-dot"></div>
-                    <span id="statusText">غير متصل</span>
+                    <span id="statusText">في انتظار انضمام شخص...</span>
                 </div>
             </div>
             <audio id="remoteAudio" autoplay></audio>
@@ -398,6 +437,7 @@
     const SHARED_PASSWORD = "vhc23";
     let currentUsername = "";
     let currentUserIpKey = "";
+    let activeRoomCode = "";
 
     window.onload = function() {
         const savedUser = localStorage.getItem('vhc_chat_username');
@@ -406,7 +446,6 @@
         }
     }
 
-    // فحص ما إذا كان المستخدم مسجلاً من قبل أو جديداً
     window.checkUserAndProceed = async function() {
         const enteredUser = document.getElementById('userInput').value.trim();
         const enteredPass = document.getElementById('passInput').value;
@@ -432,11 +471,9 @@
                 });
             }
 
-            // إذا كان الاسم مسجلاً بالفعل في قاعدة البيانات، ادخل مباشرة دون رسالة تأكيد
             if (nameExistsInDb) {
                 unlockApp(enteredUser);
             } else {
-                // إذا كان اسماً جديداً كلياً، أظهر رسالة التأكيد لمنع الإنشاء بالخطأ
                 if (confirm(`هل أنت متأكد من رغبتك في إنشاء مستخدم جديد باسم: (${enteredUser})؟`)) {
                     unlockApp(enteredUser);
                 }
@@ -444,7 +481,6 @@
 
         } catch (e) {
             console.log("خطأ أثناء فحص اسم المستخدم:", e);
-            // في حال حدوث مشكلة اتصال، اعتبره مستخدماً جديداً وأظهر رسالة التأكيد احتياطياً
             if (confirm(`هل أنت متأكد من رغبتك في الدخول بالاسم: (${enteredUser})؟`)) {
                 unlockApp(enteredUser);
             }
@@ -460,14 +496,12 @@
             const data = await response.json();
             currentUserIpKey = data.ip.replaceAll('.', '_');
 
-            // فحص هل الـ IP محظور أم لا
             const blockCheck = await get(child(ref(db), `blocked_ips/${currentUserIpKey}`));
             if (blockCheck.exists()) {
                 alert("عذراً، هذا الـ IP تم حظره من قبل الأدمن!");
                 return;
             }
 
-            // تسجيل الجهاز في قاعدة البيانات
             set(ref(db, `connected_users/${currentUserIpKey}`), {
                 ip: data.ip,
                 username: currentUsername,
@@ -481,7 +515,6 @@
         document.getElementById('lockScreen').style.display = 'none';
         document.getElementById('appContent').style.display = 'grid';
 
-        // إذا كان اسم المستخدم هو Admin، افتح لوحة التحكم تلقائياً
         if (currentUsername.toLowerCase() === 'admin') {
             openAdminPanel();
         }
@@ -495,7 +528,6 @@
         }
     }
 
-    // فتح وإغلاق لوحة الأدمن
     function openAdminPanel() {
         document.getElementById('adminModal').style.display = 'flex';
         loadAdminData();
@@ -505,7 +537,6 @@
         document.getElementById('adminModal').style.display = 'none';
     }
 
-    // تحميل وتحديث بيانات المستخدمين للأدمن
     function loadAdminData() {
         const usersListRef = ref(db, 'connected_users');
         onValue(usersListRef, (snapshot) => {
@@ -532,7 +563,6 @@
         });
     }
 
-    // وظيفة حظر IP للأدمن
     window.blockIp = async function(ipKey) {
         if (confirm("هل أنت متأكد من حظر هذا الجهاز (IP)؟")) {
             await set(ref(db, `blocked_ips/${ipKey}`), true);
@@ -541,14 +571,12 @@
         }
     }
 
-    // وظيفة حذف المستخدم من القائمة النشطة
     window.deleteUser = async function(ipKey) {
         if (confirm("هل أنت متأكد من حذف هذا المستخدم؟")) {
             await remove(ref(db, `connected_users/${ipKey}`));
         }
     }
 
-    // الاستماع لو تم حظر المستخدم الحالي أثناء تواجده لتسجيل خروجه فوراً
     function listenToAdminActions() {
         if (!currentUserIpKey) return;
         onValue(ref(db, `blocked_ips/${currentUserIpKey}`), (snapshot) => {
@@ -639,24 +667,61 @@
         });
     });
 
-    function updateConnectionStatus(isConnected) {
-        const dot = document.getElementById('lightDot');
-        const text = document.getElementById('statusText');
+    function showVoiceControls(isInVoice) {
         const shareBtn = document.getElementById('shareScreenBtn');
+        const muteBtn = document.getElementById('muteMicBtn');
+        const exitBtn = document.getElementById('exitVoiceBtn');
+        const voiceSection = document.getElementById('voiceUsersSection');
 
-        if (isConnected) {
-            dot.classList.add('connected');
-            text.innerText = "متصل صوتياً";
+        if (isInVoice) {
             shareBtn.style.display = 'inline-block';
+            muteBtn.style.display = 'inline-block';
+            exitBtn.style.display = 'inline-block';
+            voiceSection.style.display = 'block';
         } else {
-            dot.classList.remove('connected');
-            text.innerText = "غير متصل";
             shareBtn.style.display = 'none';
+            muteBtn.style.display = 'none';
+            exitBtn.style.display = 'none';
+            voiceSection.style.display = 'none';
+            document.getElementById('voiceUsersList').innerHTML = '';
         }
     }
 
     let localStream, peerConnection;
     const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+    function trackVoiceParticipants(roomCode) {
+        const userIdentifier = currentUserIpKey || ('user_' + Math.floor(Math.random() * 1000));
+        const userRef = ref(db, `voice_rooms/${roomCode}/participants/${userIdentifier}`);
+        
+        set(userRef, { username: currentUsername });
+
+        onValue(ref(db, `voice_rooms/${roomCode}/participants`), (snapshot) => {
+            const listEl = document.getElementById('voiceUsersList');
+            listEl.innerHTML = '';
+            let count = 0;
+            if (snapshot.exists()) {
+                snapshot.forEach((childSnap) => {
+                    count++;
+                    const uData = childSnap.val();
+                    listEl.innerHTML += `<div class="voice-user-item">${uData.username}</div>`;
+                });
+            }
+
+            // إذا كان المضيف (Host) وانضم شخص آخر، تتحول اللمبة إلى اللون الأخضر تلقائياً
+            const lightDot = document.getElementById('lightDot');
+            const statusText = document.getElementById('statusText');
+            
+            if (count > 1) {
+                lightDot.classList.add('connected');
+                statusText.innerText = "متصل صوتياً (انضم مستخدم)";
+            } else {
+                // إذا بقي المضيف وحده تصبح حمراء (في انتظار الانضمام)
+                lightDot.classList.remove('connected');
+                statusText.innerText = "في انتظار انضمام شخص...";
+            }
+        });
+    }
 
     window.hostVoiceChat = async function() {
         const roomCode = document.getElementById('roomCodeInput').value.trim();
@@ -664,6 +729,7 @@
             alert("الرجاء إدخال رمز مكون من 6 أرقام لإنشاء الغرفة!");
             return;
         }
+        activeRoomCode = roomCode;
 
         try {
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -671,7 +737,6 @@
             localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
             peerConnection.ontrack = (event) => {
-                updateConnectionStatus(true);
                 if (event.streams[0].getVideoTracks().length > 0) {
                     const screenVideo = document.getElementById('screenVideo');
                     screenVideo.srcObject = event.streams[0];
@@ -695,7 +760,6 @@
                 const answer = snapshot.val();
                 if (answer && !peerConnection.currentRemoteDescription) {
                     await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                    updateConnectionStatus(true);
                 }
             });
 
@@ -706,7 +770,9 @@
                 }
             });
 
-            alert("تم إنشاء الغرفة (Host) بنجاح. في انتظار انضمام الطرف الآخر...");
+            showVoiceControls(true);
+            trackVoiceParticipants(roomCode);
+            alert("تم إنشاء الغرفة (Host) بنجاح. اللمبة حمراء في انتظار الانضمام...");
         } catch (err) {
             alert("خطأ في الميكروفون: " + err);
         }
@@ -718,6 +784,7 @@
             alert("الرمز المكون من 6 أرقام مطلوب للانضمام!");
             return;
         }
+        activeRoomCode = roomCode;
 
         try {
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -725,7 +792,6 @@
             localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
             peerConnection.ontrack = (event) => {
-                updateConnectionStatus(true);
                 if (event.streams[0].getVideoTracks().length > 0) {
                     const screenVideo = document.getElementById('screenVideo');
                     screenVideo.srcObject = event.streams[0];
@@ -754,14 +820,18 @@
             await peerConnection.setLocalDescription(answer);
             set(ref(db, `voice_rooms/${roomCode}/answer`), { sdp: answer.sdp, type: answer.type });
 
-            onChildAdded(ref(db, `voice_rooms/${roomCode}/host_candidates`), async (snapshot) => {
+            onChildAdded(ref(db, `voice_rooms/${roomCode}/join_candidates`), async (snapshot) => {
                 const candidateData = snapshot.val();
                 if (candidateData && peerConnection) {
                     await peerConnection.addIceCandidate(new RTCIceCandidate(JSON.parse(candidateData)));
                 }
             });
 
-            updateConnectionStatus(true);
+            // للطرف الذي ينضم (Join)، تصبح اللمبة خضراء مباشرة عند اتصاله الناجح
+            document.getElementById('lightDot').classList.add('connected');
+            document.getElementById('statusText').innerText = "متصل صوتياً";
+            showVoiceControls(true);
+            trackVoiceParticipants(roomCode);
             alert("تم الانضمام للاتصال الصوتي بنجاح!");
         } catch (err) {
             alert("خطأ في الانضمام للمكالمة: " + err);
@@ -792,6 +862,53 @@
         } catch (err) {
             console.log("تم إلغاء مشاركة الشاشة");
         }
+    };
+
+    window.toggleMuteMic = function() {
+        if (!localStream) return;
+        const audioTrack = localStream.getAudioTracks()[0];
+        if (!audioTrack) return;
+
+        audioTrack.enabled = !audioTrack.enabled;
+        const muteBtn = document.getElementById('muteMicBtn');
+
+        if (audioTrack.enabled) {
+            muteBtn.innerText = "كتم الميكروفون";
+            muteBtn.classList.remove('muted');
+        } else {
+            muteBtn.innerText = "إلغاء الكتم";
+            muteBtn.classList.add('muted');
+        }
+    };
+
+    window.exitVoiceChat = async function() {
+        if (activeRoomCode && currentUserIpKey) {
+            await remove(ref(db, `voice_rooms/${activeRoomCode}/participants/${currentUserIpKey}`));
+        }
+
+        if (localStream) {
+            localStream.getTracks().forEach(track => track.stop());
+        }
+        if (peerConnection) {
+            peerConnection.close();
+            peerConnection = null;
+        }
+
+        const screenVideo = document.getElementById('screenVideo');
+        screenVideo.srcObject = null;
+        screenVideo.style.display = 'none';
+
+        document.getElementById('remoteAudio').srcObject = null;
+        document.getElementById('roomCodeInput').value = '';
+        activeRoomCode = "";
+
+        const muteBtn = document.getElementById('muteMicBtn');
+        muteBtn.innerText = "كتم الميكروفون";
+        muteBtn.classList.remove('muted');
+
+        document.getElementById('lightDot').classList.remove('connected');
+        document.getElementById('statusText').innerText = "غير متصل";
+        showVoiceControls(false);
     };
 </script>
 
