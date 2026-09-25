@@ -2,9 +2,11 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>تطبيق خاص - Discord Style</title>
+    <title>تطبيق خاص - Discord Style (PeerJS)</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#5865f2">
+    <!-- استدعاء مكتبة PeerJS عبر CDN -->
+    <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
     <style>
         :root {
             --bg-darker: #202225;
@@ -118,7 +120,6 @@
             color: #fff;
         }
 
-        /* قسم الأعضاء في المكالمة الصوتية */
         .voice-users-section {
             margin-top: 10px;
             border-top: 1px solid #202225;
@@ -380,7 +381,6 @@
         <div class="channel-list">
             <div class="channel-item active"># عام-general</div>
             
-            <!-- قائمة أعضاء المكالمة الصوتية -->
             <div class="voice-users-section" id="voiceUsersSection">
                 <div class="voice-users-title">المتصلون صوتياً</div>
                 <div id="voiceUsersList"></div>
@@ -438,6 +438,10 @@
     let currentUsername = "";
     let currentUserIpKey = "";
     let activeRoomCode = "";
+    
+    let peer = null;
+    let localStream = null;
+    let currentCall = null;
 
     window.onload = function() {
         const savedUser = localStorage.getItem('vhc_chat_username');
@@ -480,7 +484,6 @@
             }
 
         } catch (e) {
-            console.log("خطأ أثناء فحص اسم المستخدم:", e);
             if (confirm(`هل أنت متأكد من رغبتك في الدخول بالاسم: (${enteredUser})؟`)) {
                 unlockApp(enteredUser);
             }
@@ -509,7 +512,6 @@
             });
         } catch(e) {
             currentUserIpKey = "local_device";
-            console.log("العمل محلياً دون تتبع IP");
         }
 
         document.getElementById('lockScreen').style.display = 'none';
@@ -687,9 +689,6 @@
         }
     }
 
-    let localStream, peerConnection;
-    const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-
     function trackVoiceParticipants(roomCode) {
         const userIdentifier = currentUserIpKey || ('user_' + Math.floor(Math.random() * 1000));
         const userRef = ref(db, `voice_rooms/${roomCode}/participants/${userIdentifier}`);
@@ -708,7 +707,6 @@
                 });
             }
 
-            // إذا كان المضيف (Host) وانضم شخص آخر، تتحول اللمبة إلى اللون الأخضر تلقائياً
             const lightDot = document.getElementById('lightDot');
             const statusText = document.getElementById('statusText');
             
@@ -716,13 +714,13 @@
                 lightDot.classList.add('connected');
                 statusText.innerText = "متصل صوتياً (انضم مستخدم)";
             } else {
-                // إذا بقي المضيف وحده تصبح حمراء (في انتظار الانضمام)
                 lightDot.classList.remove('connected');
                 statusText.innerText = "في انتظار انضمام شخص...";
             }
         });
     }
 
+    // 1. إنشاء الغرفة (Host) عبر PeerJS
     window.hostVoiceChat = async function() {
         const roomCode = document.getElementById('roomCodeInput').value.trim();
         if (roomCode.length !== 6) {
@@ -733,51 +731,41 @@
 
         try {
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            peerConnection = new RTCPeerConnection(servers);
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-            peerConnection.ontrack = (event) => {
-                if (event.streams[0].getVideoTracks().length > 0) {
-                    const screenVideo = document.getElementById('screenVideo');
-                    screenVideo.srcObject = event.streams[0];
-                    screenVideo.style.display = 'block';
-                } else {
-                    document.getElementById('remoteAudio').srcObject = event.streams[0];
-                }
-            };
+            // استخدام الرمز نفسه كـ Peer ID
+            peer = new Peer(roomCode);
 
-            peerConnection.onicecandidate = (event) => {
-                if (event.candidate) {
-                    push(ref(db, `voice_rooms/${roomCode}/host_candidates`), JSON.stringify(event.candidate));
-                }
-            };
-
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            set(ref(db, `voice_rooms/${roomCode}/offer`), { sdp: offer.sdp, type: offer.type });
-
-            onChildAdded(ref(db, `voice_rooms/${roomCode}/answer`), async (snapshot) => {
-                const answer = snapshot.val();
-                if (answer && !peerConnection.currentRemoteDescription) {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-                }
+            peer.on('open', (id) => {
+                showVoiceControls(true);
+                trackVoiceParticipants(roomCode);
+                alert("تم إنشاء الغرفة بنجاح عبر سيرفر PeerJS السحابي. اللمبة حمراء في انتظار الانضمام...");
             });
 
-            onChildAdded(ref(db, `voice_rooms/${roomCode}/join_candidates`), async (snapshot) => {
-                const candidateData = snapshot.val();
-                if (candidateData && peerConnection) {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(JSON.parse(candidateData)));
-                }
+            peer.on('call', (call) => {
+                currentCall = call;
+                call.answer(localStream); // الرد على المتصل وإرسال الصوت
+
+                call.on('stream', (remoteStream) => {
+                    if (remoteStream.getVideoTracks().length > 0) {
+                        const screenVideo = document.getElementById('screenVideo');
+                        screenVideo.srcObject = remoteStream;
+                        screenVideo.style.display = 'block';
+                    } else {
+                        document.getElementById('remoteAudio').srcObject = remoteStream;
+                    }
+                });
             });
 
-            showVoiceControls(true);
-            trackVoiceParticipants(roomCode);
-            alert("تم إنشاء الغرفة (Host) بنجاح. اللمبة حمراء في انتظار الانضمام...");
+            peer.on('error', (err) => {
+                alert("خطأ في الاتصال بالسيرفر (ربما الرمز مستخدم مسبقاً): " + err.type);
+            });
+
         } catch (err) {
             alert("خطأ في الميكروفون: " + err);
         }
     };
 
+    // 2. الانضمام للغرفة (Join) عبر PeerJS
     window.joinVoiceChat = async function() {
         const roomCode = document.getElementById('roomCodeInput').value.trim();
         if (roomCode.length !== 6) {
@@ -788,51 +776,40 @@
 
         try {
             localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-            peerConnection = new RTCPeerConnection(servers);
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-            peerConnection.ontrack = (event) => {
-                if (event.streams[0].getVideoTracks().length > 0) {
-                    const screenVideo = document.getElementById('screenVideo');
-                    screenVideo.srcObject = event.streams[0];
-                    screenVideo.style.display = 'block';
-                } else {
-                    document.getElementById('remoteAudio').srcObject = event.streams[0];
-                }
-            };
+            // إنشاء اتصال حر للعميل المنضم
+            peer = new Peer();
 
-            peerConnection.onicecandidate = (event) => {
-                if (event.candidate) {
-                    push(ref(db, `voice_rooms/${roomCode}/join_candidates`), JSON.stringify(event.candidate));
-                }
-            };
+            peer.on('open', (id) => {
+                // الاتصال بالمضيف عبر معرف الغرفة (Room Code)
+                const call = peer.call(roomCode, localStream);
+                currentCall = call;
 
-            const offerSnap = await get(child(ref(db), `voice_rooms/${roomCode}/offer`));
-            if (!offerSnap.exists()) {
-                alert("لم يتم العثور على غرفة بهذا الرمز!");
-                return;
-            }
+                call.on('stream', (remoteStream) => {
+                    if (remoteStream.getVideoTracks().length > 0) {
+                        const screenVideo = document.getElementById('screenVideo');
+                        screenVideo.srcObject = remoteStream;
+                        screenVideo.style.display = 'block';
+                    } else {
+                        document.getElementById('remoteAudio').srcObject = remoteStream;
+                    }
+                });
 
-            const offer = offerSnap.val();
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                call.on('error', (err) => {
+                    alert("فشل الاتصال بالمضيف: " + err);
+                });
 
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            set(ref(db, `voice_rooms/${roomCode}/answer`), { sdp: answer.sdp, type: answer.type });
-
-            onChildAdded(ref(db, `voice_rooms/${roomCode}/join_candidates`), async (snapshot) => {
-                const candidateData = snapshot.val();
-                if (candidateData && peerConnection) {
-                    await peerConnection.addIceCandidate(new RTCIceCandidate(JSON.parse(candidateData)));
-                }
+                document.getElementById('lightDot').classList.add('connected');
+                document.getElementById('statusText').innerText = "متصل صوتياً";
+                showVoiceControls(true);
+                trackVoiceParticipants(roomCode);
+                alert("تم الانضمام للاتصال الصوتي بنجاح!");
             });
 
-            // للطرف الذي ينضم (Join)، تصبح اللمبة خضراء مباشرة عند اتصاله الناجح
-            document.getElementById('lightDot').classList.add('connected');
-            document.getElementById('statusText').innerText = "متصل صوتياً";
-            showVoiceControls(true);
-            trackVoiceParticipants(roomCode);
-            alert("تم الانضمام للاتصال الصوتي بنجاح!");
+            peer.on('error', (err) => {
+                alert("خطأ في العثور على الغرفة أو الرمز غير صحيح: " + err.type);
+            });
+
         } catch (err) {
             alert("خطأ في الانضمام للمكالمة: " + err);
         }
@@ -841,22 +818,17 @@
     window.shareScreen = async function() {
         try {
             const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-            const screenTrack = screenStream.getVideoTracks()[0];
-            
             const screenVideo = document.getElementById('screenVideo');
             screenVideo.srcObject = screenStream;
             screenVideo.style.display = 'block';
 
-            if (peerConnection) {
-                const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-                if (sender) {
-                    sender.replaceTrack(screenTrack);
-                } else {
-                    screenStream.getTracks().forEach(track => peerConnection.addTrack(track, screenStream));
-                }
+            if (peer && activeRoomCode) {
+                // إعادة الاتصال ومشاركة الشاشة كـ Stream جديد
+                const call = peer.call(activeRoomCode, screenStream);
+                currentCall = call;
             }
 
-            screenTrack.onended = () => {
+            screenStream.getVideoTracks()[0].onended = () => {
                 screenVideo.style.display = 'none';
             };
         } catch (err) {
@@ -889,9 +861,11 @@
         if (localStream) {
             localStream.getTracks().forEach(track => track.stop());
         }
-        if (peerConnection) {
-            peerConnection.close();
-            peerConnection = null;
+        if (currentCall) {
+            currentCall.close();
+        }
+        if (peer) {
+            peer.destroy();
         }
 
         const screenVideo = document.getElementById('screenVideo');
