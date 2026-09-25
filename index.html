@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>تطبيق خاص - Discord Style</title>
-    <!-- ربط ملف الـ Manifest لكي يقبل التثبيت -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#5865f2">
     <style>
@@ -109,24 +108,27 @@
             background-color: var(--bg-chat);
         }
 
+        /* قسم المكالمة الصوتية والشاشة */
         .media-container {
             padding: 15px;
             background-color: var(--bg-dark);
             border-bottom: 1px solid #202225;
             display: flex;
-            gap: 15px;
-            align-items: center;
-        }
-        .videos-grid {
-            display: flex;
+            flex-direction: column;
             gap: 10px;
         }
-        video {
-            width: 160px;
-            height: 90px;
-            background: #000;
+        .voice-setup {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .voice-setup input {
+            padding: 6px;
+            background: var(--bg-darker);
+            border: 1px solid #444;
+            color: #fff;
             border-radius: 4px;
-            object-fit: cover;
+            width: 130px;
         }
         .media-controls {
             display: flex;
@@ -145,6 +147,15 @@
         .media-controls button.share-btn { background-color: #2f7d32; }
         .media-controls button.share-btn:hover { background-color: #388e3c; }
 
+        video {
+            width: 200px;
+            height: 120px;
+            background: #000;
+            border-radius: 4px;
+            object-fit: cover;
+            display: none; /* تظهر فقط عند مشاركة الشاشة */
+        }
+
         .chat-messages {
             flex: 1;
             padding: 20px;
@@ -159,7 +170,7 @@
         }
         .message .username {
             font-weight: 600;
-            color: #fff;
+            color: #7289da;
             margin-bottom: 4px;
             font-size: 14px;
         }
@@ -195,15 +206,18 @@
 </head>
 <body>
 
+<!-- شاشة تسجيل الدخول (كلمة المرور + اسم المستخدم) -->
 <div id="lockScreen">
     <div class="lock-card">
         <h2>تسجيل الدخول</h2>
-        <input type="password" id="passInput" placeholder="أدخل رمز القفل..." onkeypress="checkLockEnter(event)">
+        <input type="text" id="userInput" placeholder="اكتب اسمك (Username)...">
+        <input type="password" id="passInput" placeholder="رمز القفل المشترك (vhc23)..." onkeypress="checkLockEnter(event)">
         <button onclick="unlockApp()">دخول</button>
-        <div id="errorText" class="error-msg">كلمة المرور غير صحيحة!</div>
+        <div id="errorText" class="error-msg">الرجاء إدخال الاسم ورمز صحيح!</div>
     </div>
 </div>
 
+<!-- تطبيق الديسكورد الأساسي -->
 <div id="appContent">
     <div class="sidebar">
         <div class="server-header">VHC Private</div>
@@ -213,19 +227,22 @@
     </div>
 
     <div class="main-chat-area">
+        <!-- قسم المكالمة الصوتية ومشاركة الشاشة -->
         <div class="media-container">
-            <div class="videos-grid">
-                <video id="localVideo" autoplay muted playsinline></video>
-                <video id="remoteVideo" autoplay playsinline></video>
-            </div>
-            <div class="media-controls">
-                <button onclick="startCall()">اتصال صوت وفيديو</button>
+            <div class="voice-setup">
+                <input type="text" id="roomCodeInput" placeholder="رمز الصوت (6 أرقام)" maxlength="6">
+                <button onclick="startVoiceChat()">اتصال صوتي</button>
                 <button class="share-btn" onclick="shareScreen()">مشاركة الشاشة</button>
             </div>
+            <!-- عنصر الصوت وعرض الشاشة المشتركة -->
+            <audio id="remoteAudio" autoplay></audio>
+            <video id="screenVideo" autoplay playsinline></video>
         </div>
 
+        <!-- سجل الرسائل -->
         <div id="chatMessages" class="chat-messages"></div>
 
+        <!-- خانة كتابة الرسالة -->
         <div class="chat-input-area">
             <div class="chat-input-wrapper">
                 <input type="text" id="msgInput" placeholder="إرسال رسالة إلى #عام-general (اضغط Enter للإرسال)..." onkeypress="checkChatEnter(event)">
@@ -234,6 +251,7 @@
     </div>
 </div>
 
+<!-- ربط Firebase وتوابع التطبيق -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getDatabase, ref, push, onChildAdded, set, get, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
@@ -252,17 +270,15 @@
     const db = getDatabase(app);
     
     const SHARED_PASSWORD = "vhc23";
-
-    // تفعيل إذن الإشعارات للأجهزة عند فتح التطبيق
-    if (window.Notification && Notification.permission !== "granted") {
-        Notification.requestPermission();
-    }
+    let currentUsername = "مجهول";
 
     window.unlockApp = async function() {
         const enteredPass = document.getElementById('passInput').value;
+        const enteredUser = document.getElementById('userInput').value.trim();
         const errorElement = document.getElementById('errorText');
 
-        if (enteredPass === SHARED_PASSWORD) {
+        if (enteredPass === SHARED_PASSWORD && enteredUser !== "") {
+            currentUsername = enteredUser;
             errorElement.style.display = 'none';
             document.getElementById('lockScreen').style.display = 'none';
             document.getElementById('appContent').style.display = 'grid';
@@ -282,6 +298,7 @@
 
                 set(ref(db, `connected_users/${userIp}`), {
                     ip: data.ip,
+                    username: currentUsername,
                     lastActive: Date.now()
                 });
             } catch(e) {
@@ -302,8 +319,11 @@
     window.sendTextMessage = function() {
         const text = document.getElementById('msgInput').value;
         if(text.trim() !== '') {
-            // نستخدم معرف عشوائي بسيط للتمييز أو اسم عام
-            push(ref(db, 'messages/'), { text: text, sender: 'المستخدم', timestamp: Date.now() });
+            push(ref(db, 'messages/'), { 
+                text: text, 
+                sender: currentUsername, 
+                timestamp: Date.now() 
+            });
             document.getElementById('msgInput').value = '';
         }
     }
@@ -314,7 +334,6 @@
         }
     }
 
-    // استقبال الرسائل وعرضها، مع إرسال إشعار للجهاز (Notification)
     onChildAdded(ref(db, 'messages/'), (data) => {
         const msg = data.val();
         const box = document.getElementById('chatMessages');
@@ -325,45 +344,85 @@
             </div>
         `;
         box.scrollTop = box.scrollHeight;
-
-        // إرسال تنبيه منبثق للجهاز إذا كان التطبيق في الخلفية أو قيد الاستخدام
-        if (Notification.permission === "granted" && document.hidden) {
-            new Notification("رسالة جديدة في VHC Chat", {
-                body: msg.text,
-                icon: "https://cdn-icons-png.flaticon.com/512/725/725107.png"
-            });
-        }
     });
 
-    // تسجيل Service Worker لتمكين تثبيت التطبيق (PWA)
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js')
-        .then(() => console.log('Service Worker Registered Successfully'))
-        .catch((err) => console.log('SW Registration failed: ', err));
-    }
-</script>
+    // إدارة الاتصال الصوتي عبر رمز الـ 6 أرقام (WebRTC + Firebase Signaling)
+    let localStream, peerConnection;
+    const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-<script>
-    let localStream;
-
-    async function startCall() {
-        try {
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            document.getElementById('localVideo').srcObject = localStream;
-            alert("تم تشغيل الكاميرا والميكروفون بنجاح.");
-        } catch (err) {
-            alert("تعذر الوصول إلى الوسائط: " + err);
+    window.startVoiceChat = async function() {
+        const roomCode = document.getElementById('roomCodeInput').value.trim();
+        if (roomCode.length !== 6) {
+            alert("الرجاء إدخال رمز مكون من 6 أرقام للاتصال الصوتي!");
+            return;
         }
-    }
 
-    async function shareScreen() {
         try {
-            const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-            document.getElementById('localVideo').srcObject = screenStream;
+            // طلب الصوت فقط بدون فيديو
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            alert("تم تفعيل الميكروفون بنجاح. جارِ الاتصال...");
+
+            peerConnection = new RTCPeerConnection(servers);
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            peerConnection.ontrack = (event) => {
+                if (event.streams[0].getVideoTracks().length > 0) {
+                    const screenVideo = document.getElementById('screenVideo');
+                    screenVideo.srcObject = event.streams[0];
+                    screenVideo.style.display = 'block';
+                } else {
+                    document.getElementById('remoteAudio').srcObject = event.streams[0];
+                }
+            };
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    push(ref(db, `voice_rooms/${roomCode}/candidates`), JSON.stringify(event.candidate));
+                }
+            };
+
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            set(ref(db, `voice_rooms/${roomCode}/offer`), { sdp: offer.sdp, type: offer.type });
+
+            // الاستماع للإجابة (Answer)
+            onChildAdded(ref(db, `voice_rooms/${roomCode}/answer`), async (snapshot) => {
+                const answer = snapshot.val();
+                if (answer && !peerConnection.currentRemoteDescription) {
+                    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                }
+            });
+
+        } catch (err) {
+            alert("خطأ في الميكروفون: " + err);
+        }
+    };
+
+    window.shareScreen = async function() {
+        try {
+            const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+            const screenTrack = screenStream.getVideoTracks()[0];
+            
+            const screenVideo = document.getElementById('screenVideo');
+            screenVideo.srcObject = screenStream;
+            screenVideo.style.display = 'block';
+
+            if (peerConnection) {
+                const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) {
+                    sender.replaceTrack(screenTrack);
+                } else {
+                    screenStream.getTracks().forEach(track => peerConnection.addTrack(track, screenStream));
+                }
+            }
+
+            screenTrack.onended = () => {
+                screenVideo.style.display = 'none';
+            };
         } catch (err) {
             console.log("تم إلغاء مشاركة الشاشة");
         }
-    }
+    };
 </script>
 
 </body>
