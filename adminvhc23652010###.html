@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>لوحة تحكم الأدمن - VHC Private</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#5865f2">
+    <style>
+        :root {
+            --bg-darker: #202225;
+            --bg-dark: #2f3136;
+            --bg-chat: #36393f;
+            --text-normal: #dcddde;
+            --text-muted: #72767d;
+            --accent-color: #5865f2;
+            --accent-hover: #4752c4;
+            --danger-color: #ed4245;
+            --success-color: #3ba55d;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-chat);
+            color: var(--text-normal);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .admin-container {
+            background: var(--bg-dark);
+            padding: 30px;
+            border-radius: 8px;
+            width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+            color: #fff;
+        }
+
+        .admin-container h2 {
+            margin-top: 0;
+            border-bottom: 2px solid var(--bg-darker);
+            padding-bottom: 10px;
+        }
+
+        .admin-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .admin-table th, .admin-table td {
+            border: 1px solid #444;
+            padding: 10px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .admin-table th {
+            background-color: var(--bg-darker);
+        }
+
+        .admin-action-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            color: white;
+            font-weight: bold;
+        }
+
+        .btn-block { background: var(--danger-color); }
+        .btn-block:hover { background: #c0392b; }
+        
+        .btn-delete { background: #72767d; margin-right: 5px; }
+        .btn-delete:hover { background: #5f6368; }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 20px;
+            color: var(--accent-color);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+<div class="admin-container">
+    <h2>لوحة تحكم الأدمن (إدارة المستخدمين و الـ IPs)</h2>
+    <p style="font-size: 13px; color: var(--text-muted);">يمكنك متابعة الأجهزة المتصلة وحظرها أو إزالة صلاحياتها من هنا:</p>
+    
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>اسم المستخدم</th>
+                <th>IP الجهاز</th>
+                <th>الإجراءات</th>
+            </tr>
+        </thead>
+        <tbody id="adminUsersList">
+            <!-- سيتم تعبئتها ديناميكياً من قاعدة البيانات -->
+        </tbody>
+    </table>
+
+    <br>
+    <a href="index.html" class="back-link">← العودة إلى صفحة الشات الرئيسية</a>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, onValue, set, remove, child } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyDEAukk7GrRJDBC54gAjyuC9YMEMvP3E",
+        authDomain: "chat-app-95202.firebaseapp.com",
+        databaseURL: "https://chat-app-95202-default-rtdb.firebaseio.com",
+        projectId: "chat-app-95202",
+        storageBucket: "chat-app-95202.firebasestorage.app",
+        messagingSenderId: "714604280805",
+        appId: "1:714604280805:web:84fbc15d964d68bf954d0c"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // تحميل وتحديث بيانات المستخدمين النشطين لحظياً
+    function loadAdminData() {
+        const usersListRef = ref(db, 'connected_users');
+        onValue(usersListRef, (snapshot) => {
+            const tbody = document.getElementById('adminUsersList');
+            tbody.innerHTML = '';
+            
+            if (snapshot.exists()) {
+                snapshot.forEach((childSnap) => {
+                    const userData = childSnap.val();
+                    const ipKey = childSnap.key;
+
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${userData.username || 'غير معروف'}</td>
+                            <td>${userData.ip || 'محلية'}</td>
+                            <td>
+                                <button class="admin-action-btn btn-block" onclick="blockIp('${ipKey}')">حظر IP</button>
+                                <button class="admin-action-btn btn-delete" onclick="deleteUser('${ipKey}')">حذف</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            } else {
+                tbody.innerHTML = `<tr><td colspan="3" style="color: var(--text-muted);">لا يوجد مستخدمين متصلين حالياً</td></tr>`;
+            }
+        });
+    }
+
+    // وظيفة حظر الـ IP
+    window.blockIp = async function(ipKey) {
+        if (confirm("هل أنت متأكد من حظر هذا الجهاز (IP) نهائياً؟")) {
+            await set(ref(db, `blocked_ips/${ipKey}`), true);
+            await remove(ref(db, `connected_users/${ipKey}`));
+            alert("تم الحظر بنجاح!");
+        }
+    }
+
+    // وظيفة حذف المستخدم من القائمة النشطة
+    window.deleteUser = async function(ipKey) {
+        if (confirm("هل أنت متأكد من حذف هذا المستخدم من القائمة؟")) {
+            await remove(ref(db, `connected_users/${ipKey}`));
+        }
+    }
+
+    // تشغيل تحميل البيانات عند فتح الصفحة
+    loadAdminData();
+</script>
+
+</body>
+</html>
